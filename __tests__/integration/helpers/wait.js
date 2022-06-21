@@ -14,7 +14,8 @@
  * permissions and limitations under the License.
  */
 
-const fetch = require('cross-fetch');
+// const fetch = require('cross-fetch');
+const fetch = require('node-fetch');
 const https = require('https');
 
 const waitFor = (ms) => new Promise((res) => setTimeout(res, ms));
@@ -27,9 +28,10 @@ const waitUntilServerIsUp = async (url, timeoutInMs = 15000) => {
     try {
       // bc of self signed cert we use for one app local dev
       const options = requestUrl.startsWith('https') ? { agent: new https.Agent({ rejectUnauthorized: false }) } : {};
-      response = await fetch(requestUrl, options);
+      response = await fetch(requestUrl).then(r => r.text());
     } catch (error) {
       // do nothing but continue on to next loop
+      console.log('--TESTING ERROR--', error.message, error)
     }
 
     count += 1;
@@ -37,9 +39,9 @@ const waitUntilServerIsUp = async (url, timeoutInMs = 15000) => {
       return;
     }
 
-    await waitFor(200);
+    await waitFor(1000);
     // increments every 200ms so divide timeout by count to get the total number of counts
-    const maxCount = timeout / 200;
+    const maxCount = timeout / 1000;
     if (count >= maxCount) {
       throw new Error(`${requestUrl} not resolving with a 200 status code within ${timeout}ms`);
     }

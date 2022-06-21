@@ -136,6 +136,7 @@ describe('Tests that require Docker setup', () => {
           method: 'POST',
           headers: {
             origin: 'test.example.com',
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:103.0) Gecko/20100101 Firefox/103.0'
           },
         }
       );

@@ -17,7 +17,7 @@
 import cors from 'cors';
 
 const devOrigin = /localhost:\d{1,5}/;
-const corsOptions = {
+export const corsOptions = {
   origin: [],
 };
 

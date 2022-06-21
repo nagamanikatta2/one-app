@@ -14,34 +14,37 @@
  * permissions and limitations under the License.
  */
 
-import express from 'express';
 import helmet from 'helmet';
 import { register as metricsRegister, collectDefaultMetrics } from 'prom-client';
+import Fastify from 'fastify';
+import fastifyExpress from '@fastify/express';
 
 import logging from './utils/logging/serverMiddleware';
 import healthCheck from './middleware/healthCheck';
 
 collectDefaultMetrics();
 
-export function createMetricsServer() {
-  const app = express();
+export async function createMetricsServer() {
+  const fastify = Fastify();
 
-  app.disable('x-powered-by');
-  app.disable('e-tag');
+  await fastify.register(fastifyExpress);
 
-  app.use(helmet());
-  app.use(logging);
+  fastify.express.disable('x-powered-by');
+  fastify.express.disable('e-tag');
 
-  app.get('/im-up', healthCheck);
+  fastify.use(helmet());
+  fastify.use(logging);
 
-  app.get('/metrics', async (req, res) => {
+  fastify.express.get('/im-up', healthCheck);
+
+  fastify.express.get('/metrics', async (_req, res) => {
     res.set('Content-Type', metricsRegister.contentType);
     res.end(await metricsRegister.metrics());
   });
 
-  app.use('/', (req, res) => res.status(404).set('Content-Type', 'text/plain').send(''));
+  fastify.express.use('/', (_req, res) => res.status(404).set('Content-Type', 'text/plain').send(''));
 
-  return app;
+  return fastify;
 }
 
-export default createMetricsServer();
+export default createMetricsServer;

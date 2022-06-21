@@ -19,6 +19,7 @@ import { renderStaticErrorPage } from './sendHtml';
 
 // eslint-disable-next-line max-params
 const serverError = (err, req, res, next) => {
+  console.error('--serverError--')
   const { method, url } = req;
   const correlationId = req.headers && req.headers['correlation-id'];
 
@@ -28,6 +29,7 @@ const serverError = (err, req, res, next) => {
 
   if (headersSent) {
     // don't try changing the headers at this point
+    console.log('--return 1')
     return next(err);
   }
 
@@ -37,6 +39,7 @@ const serverError = (err, req, res, next) => {
   } else {
     res.status(500);
   }
+  console.log('--return 2')
 
   return renderStaticErrorPage(res);
 };

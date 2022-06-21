@@ -19,6 +19,7 @@ const childProcess = require('child_process');
 const { remote } = require('webdriverio');
 const fs = require('fs-extra');
 const yaml = require('js-yaml');
+const ip = require('ip');
 
 const { waitUntilServerIsUp } = require('./wait');
 const { createLogWatcherDuplex } = require('./logging');
@@ -66,6 +67,7 @@ const setUpTestRunner = async ({
   fs.writeFileSync(pathToDockerComposeTestFile, yaml.dump(testDockerComposeFileContents));
 
   const dockerComposeUpCommand = `docker-compose -f ${pathToDockerComposeTestFile} up --abort-on-container-exit --force-recreate`;
+  console.log('--dockerComposeUpCommand', dockerComposeUpCommand)
   const dockerComposeUpProcess = childProcess.spawn(`${dockerComposeUpCommand}`, { shell: true });
   const serverStartupTimeout = 90000;
 
@@ -77,17 +79,18 @@ const setUpTestRunner = async ({
   // uncomment this line in order to view full logs for debugging
   // logWatcherDuplex.pipe(process.stdout);
 
+  const host = ip.address();
+
   try {
     await Promise.all([
-      oneAppLocalPortToUse ? waitUntilServerIsUp(`https://localhost:${oneAppLocalPortToUse}/success`, serverStartupTimeout) : Promise.resolve(),
-      skipBrowser ? Promise.resolve() : waitUntilServerIsUp(`http://localhost:${seleniumServerPort}`, serverStartupTimeout),
+      oneAppLocalPortToUse ? waitUntilServerIsUp(`http://${host}:${oneAppLocalPortToUse}/success`, serverStartupTimeout) : Promise.resolve(),
+      skipBrowser ? Promise.resolve() : waitUntilServerIsUp(`http://${host}:${seleniumServerPort}`, serverStartupTimeout),
     ]);
   } catch (err) {
     // logWatcherDuplex will buffer the logs until piped out.
     logWatcherDuplex.pipe(process.stdout);
     throw new Error(
-      '🚨 Either of the One App, Selenium, or Nginx servers failed to be pulled, built, and started '
-      + `within ${serverStartupTimeout}ms. See logs for details.`
+      `--TESTING-- https://${host}:${oneAppLocalPortToUse}/success - http://${host}:${seleniumServerPort}`
     );
   }
 

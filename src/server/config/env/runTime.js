@@ -14,7 +14,8 @@
  * permissions and limitations under the License.
  */
 
-const ip = require('ip').address();
+// const ip = require('ip').address();
+const ip = 'localhost' // TODO: request to ip as host not working with fastify
 const { preprocessEnvVar } = require('@americanexpress/env-config-utils');
 const isFetchableUrlInNode = require('@americanexpress/env-config-utils/isFetchableUrlInNode');
 const isFetchableUrlInBrowser = require('@americanexpress/env-config-utils/isFetchableUrlInBrowser');

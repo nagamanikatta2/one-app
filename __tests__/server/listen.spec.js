@@ -14,14 +14,17 @@
  * permissions and limitations under the License.
  */
 
-import http from 'http';
-import https from 'https';
+import fs from 'fs';
+import listen from '../../src/server/listen';
+import { addServer } from '../../src/server/shutdown';
 
-import listen, { listenHttp, listenHttps } from '../../src/server/listen';
-
-jest.mock('http');
-jest.mock('https');
 jest.mock('fs');
+jest.mock('../../src/server/shutdown', () => ({
+  addServer: jest.fn(),
+}));
+
+jest.spyOn(console, 'log').mockImplementation(() => { });
+jest.spyOn(console, 'error').mockImplementation(() => { });
 
 const origEnvVarVals = {};
 [
@@ -57,8 +60,6 @@ describe('server listen', () => {
 
   afterEach(() => {
     jest.clearAllMocks();
-    http.mock.servers = [];
-    https.mock.servers = [];
   });
 
   afterAll(() => {
@@ -67,184 +68,202 @@ describe('server listen', () => {
       .forEach((name) => resetEnvVar(name, origEnvVarVals[name]));
   });
 
-  const app = (req, res) => res.status(418).send('Toot toot');
+  it('creates an http server and stores the server\'s reference', async () => {
+    expect.assertions(3);
 
-  describe('listen', () => {
-    it('creates an HTTP server when not given HTTPS config', () => {
-      const cb = jest.fn();
-      http.mock.listenError = null;
-      listen(app, cb);
-      expect(http.createServer).toHaveBeenCalledTimes(1);
-      expect(http.createServer).toHaveBeenCalledWith(app);
-      expect(http.mock.servers[0].listen).toHaveBeenCalledTimes(1);
-      expect(http.mock.servers[0].listen.mock.calls[0][0]).toEqual('3000');
-      expect(cb).toHaveBeenCalledWith(null, { port: '3000' });
+    const fastifyInstance = {
+      listen: jest.fn(),
+    };
+
+    await listen({
+      context: 'unit testing',
+      fastifyInstance,
+      port: 8888,
     });
 
-    it('creates an HTTPS server when given HTTPS config', () => {
-      const cb = jest.fn();
-      process.env.HTTPS_PORT = '8998';
-      process.env.HTTPS_PRIVATE_KEY_PATH = '/dev/null';
-      process.env.HTTPS_PUBLIC_CERT_CHAIN_PATH = '/dev/null';
-      https.mock.listenError = null;
-      listen(app, cb);
-      expect(https.createServer).toHaveBeenCalledTimes(1);
-      expect(https.createServer).toHaveBeenCalledWith(
-        { key: undefined, cert: undefined, minVersion: 'TLSv1.2' },
-        app
-      );
-      expect(https.mock.servers[0].listen).toHaveBeenCalledTimes(1);
-      expect(https.mock.servers[0].listen.mock.calls[0][0]).toEqual('8998');
-      expect(https.mock.servers[0].listen.mock.calls[0][1]).toEqual('0.0.0.0');
-      expect(cb).toHaveBeenCalledWith(null, { port: '8998' });
+    expect(fastifyInstance.listen).toHaveBeenCalledWith({
+      host: '0.0.0.0',
+      port: 8888,
+      https: null,
+    });
+    expect(addServer).toHaveBeenCalledWith(fastifyInstance);
+    expect(console.log).toHaveBeenCalledWith('unit testing listening on port 8888');
+  });
+
+  it('creates an http server with custom host and stores the server\'s reference', async () => {
+    expect.assertions(3);
+
+    process.env.IP_ADDRESS = '127.0.0.1';
+
+    const fastifyInstance = {
+      listen: jest.fn(),
+    };
+
+    await listen({
+      context: 'unit testing',
+      fastifyInstance,
+      port: 8888,
+    });
+
+    expect(fastifyInstance.listen).toHaveBeenCalledWith({
+      host: '127.0.0.1',
+      port: 8888,
+      https: null,
+    });
+    expect(addServer).toHaveBeenCalledWith(fastifyInstance);
+    expect(console.log).toHaveBeenCalledWith('unit testing listening on port 8888');
+  });
+
+  describe('HTTPS', () => {
+    it('requires HTTPS_PRIVATE_KEY_PATH and HTTPS_PUBLIC_CERT_CHAIN_PATH env vars', async () => {
+      expect.assertions(1);
+
+      const fastifyInstance = {
+        listen: jest.fn(),
+      };
+
+      let errorMsg;
+      try {
+        await listen({
+          context: 'unit testing',
+          fastifyInstance,
+          port: 8888,
+          https: true,
+        });
+      } catch (error) {
+        errorMsg = error.message;
+      }
+
+      expect(errorMsg).toBe('HTTPS_PORT requires HTTPS_PRIVATE_KEY_PATH and HTTPS_PUBLIC_CERT_CHAIN_PATH to be set');
+    });
+
+    it('creates an https server with key and certificate and stores the server\'s reference', async () => {
+      expect.assertions(3);
+
+      process.env.HTTPS_PRIVATE_KEY_PATH = 'key';
+      process.env.HTTPS_PUBLIC_CERT_CHAIN_PATH = 'cert';
+
+      fs.readFileSync.mockImplementationOnce(() => 'key');
+      fs.readFileSync.mockImplementationOnce(() => 'cert');
+
+      const fastifyInstance = {
+        listen: jest.fn(),
+      };
+
+      await listen({
+        context: 'unit testing',
+        fastifyInstance,
+        port: 8888,
+        https: true,
+      });
+
+      expect(fastifyInstance.listen).toHaveBeenCalledWith({
+        host: '0.0.0.0',
+        port: 8888,
+        https: {
+          cert: 'cert',
+          key: 'key',
+          minVersion: 'TLSv1.2',
+        },
+      });
+      expect(addServer).toHaveBeenCalledWith(fastifyInstance);
+      expect(console.log).toHaveBeenCalledWith('unit testing listening on port 8888');
+    });
+
+    it('creates an https server with key, certificate, and trusted ca, and stores the server\'s reference', async () => {
+      expect.assertions(3);
+
+      process.env.HTTPS_PRIVATE_KEY_PATH = 'key';
+      process.env.HTTPS_PUBLIC_CERT_CHAIN_PATH = 'cert';
+      process.env.HTTPS_TRUSTED_CA_PATH = 'trusted-ca';
+
+      fs.readFileSync.mockImplementationOnce(() => 'key');
+      fs.readFileSync.mockImplementationOnce(() => 'cert');
+      fs.readFileSync.mockImplementationOnce(() => 'trusted-ca');
+
+      const fastifyInstance = {
+        listen: jest.fn(),
+      };
+
+      await listen({
+        context: 'unit testing',
+        fastifyInstance,
+        port: 8888,
+        https: true,
+      });
+
+      expect(fastifyInstance.listen).toHaveBeenCalledWith({
+        host: '0.0.0.0',
+        port: 8888,
+        https: {
+          cert: 'cert',
+          key: 'key',
+          minVersion: 'TLSv1.2',
+          ca: ['trusted-ca'],
+        },
+      });
+      expect(addServer).toHaveBeenCalledWith(fastifyInstance);
+      expect(console.log).toHaveBeenCalledWith('unit testing listening on port 8888');
+    });
+
+    it('creates an https server with key, certificate, and passphrase, and stores the server\'s reference', async () => {
+      expect.assertions(3);
+
+      process.env.HTTPS_PRIVATE_KEY_PATH = 'key';
+      process.env.HTTPS_PUBLIC_CERT_CHAIN_PATH = 'cert';
+      process.env.HTTPS_PRIVATE_KEY_PASS_FILE_PATH = 'passphrase';
+
+      fs.readFileSync.mockImplementationOnce(() => 'key');
+      fs.readFileSync.mockImplementationOnce(() => 'cert');
+      fs.readFileSync.mockImplementationOnce(() => 'secret!');
+
+      const fastifyInstance = {
+        listen: jest.fn(),
+      };
+
+      await listen({
+        context: 'unit testing',
+        fastifyInstance,
+        port: 8888,
+        https: true,
+      });
+
+      expect(fastifyInstance.listen).toHaveBeenCalledWith({
+        host: '0.0.0.0',
+        port: 8888,
+        https: {
+          cert: 'cert',
+          key: 'key',
+          minVersion: 'TLSv1.2',
+          passphrase: 'secret!',
+        },
+      });
+      expect(addServer).toHaveBeenCalledWith(fastifyInstance);
+      expect(console.log).toHaveBeenCalledWith('unit testing listening on port 8888');
     });
   });
 
-  describe('listenHttp', () => {
-    it('uses the HTTP_PORT env var given', () => {
-      const cb = jest.fn();
-      process.env.HTTP_PORT = '8998';
-      http.mock.listenError = null;
-      listenHttp(app, cb);
-      expect(http.createServer).toHaveBeenCalledTimes(1);
-      expect(http.createServer).toHaveBeenCalledWith(app);
-      expect(http.mock.servers[0].listen).toHaveBeenCalledTimes(1);
-      expect(http.mock.servers[0].listen.mock.calls[0][0]).toEqual('8998');
-      expect(cb).toHaveBeenCalledWith(null, { port: '8998' });
-    });
+  it('app fails at start', async () => {
+    expect.assertions(2);
 
-    it('passes the error to the callback', async () => {
-      expect.assertions(2);
-      process.env.HTTP_PORT = 8998;
-      const listenError = new Error('port taken or such');
-      http.mock.listenError = listenError;
-      await listenHttp(app, (err, serverInfo) => {
-        expect(err).toEqual(listenError);
-        expect(serverInfo.port).toEqual('8998');
+    const fastifyInstance = {
+      listen: jest.fn(() => {
+        throw new Error('Testing Failure');
+      }),
+    };
+
+    let error;
+    try {
+      await listen({
+        context: 'unit testing',
+        fastifyInstance,
+        port: 8888,
       });
-    });
+    } catch (err) {
+      error = err;
+    }
 
-    it('passes the server information to the callback', async () => {
-      expect.assertions(2);
-      process.env.HTTP_PORT = 8998;
-      http.mock.listenError = null;
-      await listenHttp(app, (err, serverInfo) => {
-        expect(err).toEqual(null);
-        expect(serverInfo.port).toEqual('8998');
-      });
-    });
-  });
-
-  describe('listenHttps', () => {
-    describe('basic options', () => {
-      it('starts an HTTPS server', () => {
-        const cb = jest.fn();
-
-        process.env.HTTPS_PORT = '7890';
-        process.env.HTTPS_PRIVATE_KEY_PATH = '/dev/null';
-        process.env.HTTPS_PUBLIC_CERT_CHAIN_PATH = '/dev/null';
-        https.mock.listenError = null;
-
-        listenHttps(app, cb);
-
-        expect(https.createServer).toHaveBeenCalledTimes(1);
-        expect(https.createServer).toHaveBeenCalledWith(
-          { key: undefined, cert: undefined, minVersion: 'TLSv1.2' },
-          app
-        );
-        expect(https.mock.servers[0].listen).toHaveBeenCalledTimes(1);
-        expect(https.mock.servers[0].listen.mock.calls[0][0]).toEqual('7890');
-        expect(https.mock.servers[0].listen.mock.calls[0][1]).toEqual('0.0.0.0');
-        expect(cb).toHaveBeenCalledWith(null, { port: '7890' });
-      });
-
-      it('throws if HTTPS_PRIVATE_KEY_PATH is missing', () => {
-        const cb = jest.fn();
-
-        process.env.HTTPS_PORT = '7890';
-        process.env.HTTPS_PUBLIC_CERT_CHAIN_PATH = '/dev/null';
-        https.mock.listenError = null;
-
-        expect(() => listenHttps(app, cb)).toThrow(
-          'HTTPS_PORT requires HTTPS_PRIVATE_KEY_PATH and HTTPS_PUBLIC_CERT_CHAIN_PATH to be set'
-        );
-        expect(https.createServer).toHaveBeenCalledTimes(0);
-      });
-
-      it('throws if HTTPS_PUBLIC_CERT_CHAIN_PATH is missing', () => {
-        const cb = jest.fn();
-
-        process.env.HTTPS_PORT = '7890';
-        process.env.HTTPS_PRIVATE_KEY_PATH = '/dev/null';
-        https.mock.listenError = null;
-
-        expect(() => listenHttps(app, cb)).toThrow(
-          'HTTPS_PORT requires HTTPS_PRIVATE_KEY_PATH and HTTPS_PUBLIC_CERT_CHAIN_PATH to be set'
-        );
-        expect(https.createServer).toHaveBeenCalledTimes(0);
-      });
-    });
-
-    describe('certificate authority', () => {
-      it('uses CA options', () => {
-        const cb = jest.fn();
-
-        process.env.HTTPS_PORT = '7890';
-        process.env.HTTPS_PRIVATE_KEY_PATH = '/dev/null';
-        process.env.HTTPS_PUBLIC_CERT_CHAIN_PATH = '/dev/null';
-
-        process.env.HTTPS_TRUSTED_CA_PATH = '/dev/null';
-
-        https.mock.listenError = null;
-
-        listenHttps(app, cb);
-
-        expect(https.createServer).toHaveBeenCalledTimes(1);
-        expect(https.createServer).toHaveBeenCalledWith(
-          {
-            key: undefined,
-            cert: undefined,
-            minVersion: 'TLSv1.2',
-            ca: [undefined],
-          },
-          app
-        );
-        expect(https.mock.servers).toHaveLength(1);
-        expect(https.mock.servers[0].listen).toHaveBeenCalledTimes(1);
-        expect(https.mock.servers[0].listen.mock.calls[0][0]).toEqual('7890');
-        expect(https.mock.servers[0].listen.mock.calls[0][1]).toEqual('0.0.0.0');
-        expect(cb).toHaveBeenCalledWith(null, { port: '7890' });
-      });
-
-      it('uses passphrase option', () => {
-        const cb = jest.fn();
-
-        process.env.HTTPS_PORT = '7890';
-        process.env.HTTPS_PRIVATE_KEY_PATH = '/dev/null';
-        process.env.HTTPS_PUBLIC_CERT_CHAIN_PATH = '/dev/null';
-
-        process.env.HTTPS_PRIVATE_KEY_PASS_FILE_PATH = '/dev/null';
-
-        https.mock.listenError = null;
-
-        listenHttps(app, cb);
-
-        expect(https.createServer).toHaveBeenCalledTimes(1);
-        expect(https.createServer).toHaveBeenCalledWith(
-          {
-            key: undefined,
-            cert: undefined,
-            minVersion: 'TLSv1.2',
-            passphrase: undefined,
-          },
-          app
-        );
-        expect(https.mock.servers).toHaveLength(1);
-        expect(https.mock.servers[0].listen).toHaveBeenCalledTimes(1);
-        expect(https.mock.servers[0].listen.mock.calls[0][0]).toEqual('7890');
-        expect(https.mock.servers[0].listen.mock.calls[0][1]).toEqual('0.0.0.0');
-        expect(cb).toHaveBeenCalledWith(null, { port: '7890' });
-      });
-    });
+    expect(error.message).toBe('Testing Failure');
+    expect(console.error).toHaveBeenCalledWith('Error encountered starting unit testing server', error);
   });
 });

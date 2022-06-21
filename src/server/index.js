@@ -28,43 +28,30 @@ import { addServer, shutdown } from './shutdown';
 import pollModuleMap from './utils/pollModuleMap';
 import loadModules from './utils/loadModules';
 
-function ssrServerStart() {
+async function ssrServerStart() {
   // need to load _some_ locale so that react-intl does not prevent modules from loading
   // eslint-disable-next-line no-underscore-dangle
   Intl.__addLocaleData(enData);
-  return loadModules()
-    .then(() => new Promise((res, rej) => {
-      addServer(listen(ssrServer, (err, { port }) => {
-        if (err) {
-          rej(err);
-        } else {
-          console.log(`🌎 One App server listening on port ${port}`);
-          res();
-        }
-      }));
-    }))
-    .then(pollModuleMap);
-}
 
-function metricsServerStart() {
-  return new Promise((res, rej) => {
-    const port = process.env.HTTP_METRICS_PORT;
-    addServer(metricsServer.listen(port, (err) => (err ? rej(err) : res(port))));
+  await loadModules();
+
+  await listen({
+    context: '🌎 One App server',
+    fastifyInstance: await ssrServer(),
+    port: process.env.HTTPS_PORT || process.env.HTTP_PORT,
+    https: process.env.HTTPS_PORT != null,
   })
-    .then(
-      (port) => console.log(`📊 Metrics server listening on port ${port}`),
-      (err) => {
-        console.error('error encountered starting the metrics server', err);
-        throw err;
-      }
-    );
+
+  await pollModuleMap()
 }
 
-function appServersStart() {
-  return Promise.all([
-    ssrServerStart(),
-    metricsServerStart(),
-  ]);
+async function appServersStart() {
+  await ssrServerStart();
+  await listen({
+    context: '📊 Metrics server',
+    fastifyInstance: await metricsServer(),
+    port: process.env.HTTP_METRICS_PORT,
+  });
 }
 
 let serverChain;
@@ -92,20 +79,14 @@ if (process.env.NODE_ENV === 'development') {
   const watchLocalModules = require('./utils/watchLocalModules').default;
   const devHolocronCDN = require('./devHolocronCDN').default;
   const oneAppDevProxy = require('@americanexpress/one-app-dev-proxy');
-  const oneAppDevCdnPort = process.env.HTTP_ONE_APP_DEV_CDN_PORT;
   const oneAppDevProxyPort = process.env.HTTP_ONE_APP_DEV_PROXY_SERVER_PORT;
 
   serverChain = Promise.resolve()
-    .then(() => new Promise((res, rej) => addServer(
-      devHolocronCDN.listen(oneAppDevCdnPort, (err) => {
-        if (err) {
-          rej(err);
-        } else {
-          console.log(`👕 one-app-dev-cdn server listening on port ${oneAppDevCdnPort}`);
-          res();
-        }
-      })
-    )))
+    .then(async () => listen({
+      context: '👕 one-app-dev-cdn server',
+      fastifyInstance: await devHolocronCDN(),
+      port: process.env.HTTP_ONE_APP_DEV_CDN_PORT,
+    }))
     .then(() => new Promise((res, rej) => addServer(
       oneAppDevProxy({
         useMiddleware: argv.m,

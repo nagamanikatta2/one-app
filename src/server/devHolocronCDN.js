@@ -20,95 +20,119 @@ import path from 'path';
 import fs from 'fs';
 import express from 'express';
 import cors from '@fastify/cors';
-import fp from 'fastify-plugin';
 import { argv } from 'yargs';
-import Fastify from 'fastify';
+import Fastify, { fastify } from 'fastify';
 import fastifyExpress from '@fastify/express';
+import fp from 'fastify-plugin';
 import oneAppDevCdn from '@americanexpress/one-app-dev-cdn';
 
 const hasLocalModuleMap = () => fs.existsSync(path.join(process.cwd(), 'static', 'module-map.json'));
 
-const makeExpressRouter = () => {
-  //const router = Fastify();
+const makeExpressRouter = async () => {
+  const router= Fastify();
+  await router.register(fastifyExpress)
+  router.register(cors)
+  
+    router.get('/static',((request,reply,done)=>{
+    reply.code(200).send(
+    oneAppDevCdn({
+      localDevPublicPath: path.join(__dirname, '../../static'),
+      remoteModuleMapUrl: argv.moduleMapUrl,
+      useLocalModules: hasLocalModuleMap(),
+      appPort: process.env.HTTP_PORT,
+      useHost: argv.useHost,
+      routePrefix: '/static'
+    }))
+    done()
+  }));
+    
+    
 
-  //router.register(cors());
-  // fastify.route({
-  //   method: 'GET',
-  //   url: '/static',
-  //   handler:  () =>{return oneAppDevCdn({
-  //     localDevPublicPath: path.join(__dirname, '../../static'),
-  //     remoteModuleMapUrl: argv.moduleMapUrl,
-  //     useLocalModules: hasLocalModuleMap(),
-  //     appPort: process.env.HTTP_PORT,
-  //     useHost: argv.useHost,
-  //   })
-  // }});
+ 
+  
+  
+  return router;
+};
+
+const devHolocronCDN = async () => {
+  var fastify = oneAppDevCdn({
+    localDevPublicPath: path.join(__dirname, '../../static'),
+    remoteModuleMapUrl: argv.moduleMapUrl,
+    useLocalModules: hasLocalModuleMap(),
+    appPort: process.env.HTTP_PORT,
+    useHost: argv.useHost,
+    routePrefix: '/static'
+  });
+  
+  //await fastify.register(fastifyExpress);
+  //fastify.use((()=>makeExpressRouter()));
   // const opts = {
-  //   schema: {
-  //     response: {
-  //       200: {
-  //         type: 'object',
-  //         properties: {
-  //           hello: { type: 'string' }
-  //         }
-  //       }
-  //     }
+  //   handler: function (request, reply) {
+  //     //reply.code(200);
+  //     return (()=>oneAppDevCdn({
+  //       localDevPublicPath: path.join(__dirname, '../../static'),
+  //       remoteModuleMapUrl: argv.moduleMapUrl,
+  //       useLocalModules: hasLocalModuleMap(),
+  //       appPort: process.env.HTTP_PORT,
+  //       useHost: argv.useHost,
+  //     }))
   //   }
   // }
-  // router.get('/static', opts,
-  //   oneAppDevCdn({
+  // fastify.register(fp (function(fastify, options, done) {
+    //   fastify.decorate('devCdn',oneAppDevCdn({
+      //     localDevPublicPath: path.join(__dirname, '../../static'),
+      //     remoteModuleMapUrl: argv.moduleMapUrl,
+      //     useLocalModules: hasLocalModuleMap(),
+      //     appPort: process.env.HTTP_PORT,
+      //     useHost: argv.useHost,
+  //   }));
+  //   console.log(fastify.devCdn({
   //     localDevPublicPath: path.join(__dirname, '../../static'),
   //     remoteModuleMapUrl: argv.moduleMapUrl,
   //     useLocalModules: hasLocalModuleMap(),
   //     appPort: process.env.HTTP_PORT,
   //     useHost: argv.useHost,
-  //   })
-  // );
+  //   }))
+  //   done()
+  // }));
 
 
-  // router.register(oneAppDevCdn({
+  // fastify.route({
+  //   method:'GET',
+  //   url:'/static',
+  //   handler: () => {oneAppDevCdn({
+  //       localDevPublicPath: path.join(__dirname, '../../static'),
+  //       remoteModuleMapUrl: argv.moduleMapUrl,
+  //       useLocalModules: hasLocalModuleMap(),
+  //       appPort: process.env.HTTP_PORT,
+  //       useHost: argv.useHost,
+  //     })}
+  // });
+
+
+  //  fastify = oneAppDevCdn({
   //   localDevPublicPath: path.join(__dirname, '../../static'),
   //   remoteModuleMapUrl: argv.moduleMapUrl,
   //   useLocalModules: hasLocalModuleMap(),
   //   appPort: process.env.HTTP_PORT,
   //   useHost: argv.useHost,
-  // }));
-
-  //return router;
-};
-
-const devHolocronCDN = async () => {
-  const fastify = Fastify();
+  // });
 
 
-  await fastify.register(fastifyExpress);
-console.log(path.join(__dirname, '../../static'),)
-  fastify.register(fp (function(instance, options, next) {
-    instance.decorate('devCdn',oneAppDevCdn())
-    //console.log(instance.devCdn())
-    // console.log(instance.devCdn({
-    //   localDevPublicPath: path.join(__dirname, '../../static'),
-    //   remoteModuleMapUrl: argv.moduleMapUrl,
-    //   useLocalModules: hasLocalModuleMap(),
-    //   appPort: process.env.HTTP_PORT,
-    //   useHost: argv.useHost,
-    // }))
-    fastify.route({
-      method:'GET',
-      url:'/static',
-      handler: instance.devCdn({
-          localDevPublicPath: path.join(__dirname, '../../static'),
-          remoteModuleMapUrl: argv.moduleMapUrl,
-          useLocalModules: hasLocalModuleMap(),
-          appPort: process.env.HTTP_PORT,
-          useHost: argv.useHost,
-        })
-    });
-    next()
-  }));
-
+  //console.log(fastify)
+  // fastify.get('/static', (request,reply)=>{
+  //   return oneAppDevCdn({
+  //       localDevPublicPath: path.join(__dirname, '../../static'),
+  //       remoteModuleMapUrl: argv.moduleMapUrl,
+  //       useLocalModules: hasLocalModuleMap(),
+  //       appPort: process.env.HTTP_PORT,
+  //       useHost: argv.useHost,
+  //     })
+  // });
   // registering as such way does make it run without parameters. 
   // fastify.register(require('@americanexpress/one-app-dev-cdn'))
+  //console.log(fastify)
+  
   return fastify;
 };
 
